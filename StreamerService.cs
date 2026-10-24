@@ -18,6 +18,12 @@ public sealed class StreamerService : IStreamerService
     // nobody. Use -1 instead; streamer treats that as .set() (visible to all).
     private const int BroadcastId = -1;
 
+    // The opposite holds for a text label's ATTACHED player/vehicle: the streamer compares those against
+    // INVALID_PLAYER_ID / INVALID_VEHICLE_ID (0xFFFF), so -1 reads as "attached to someone". An attached label is
+    // filtered by its attachment's worlds — empty, i.e. every world — so the label's own virtual world was ignored
+    // and labels in identical interiors of different worlds showed through each other.
+    private const int NotAttachedId = 0xFFFF;
+
     public bool IsAvailable => StreamerInterop.Streamer_IsAvailable();
 
     public DynamicObject CreateDynamicObject(int modelId, Vector3 position, Vector3 rotation,
@@ -58,11 +64,12 @@ public sealed class StreamerService : IStreamerService
         {
             id = StreamerInterop.Streamer_TextLabel_Create(ptr, rgba,
                 position.X, position.Y, position.Z, drawDistance,
-                PlayerToId(attachedPlayer), VehicleToId(attachedVehicle),
+                AttachedId(attachedPlayer), AttachedId(attachedVehicle),
                 testLos,
                 virtualWorld, interior, PlayerToId(player),
                 streamDistance, areaId, priority);
         }
+
         return new DynamicTextLabel(id, text ?? string.Empty, color, position, drawDistance);
     }
 
@@ -137,7 +144,14 @@ public sealed class StreamerService : IStreamerService
     public bool TrySetCoarseCellDistance(float distance) => StreamerInterop.Streamer_SetCoarseCellDistance(distance);
 
     private static int PlayerToId(Player? player) => player is { IsComponentAlive: true } ? player.Id : BroadcastId;
-    private static int VehicleToId(Vehicle? vehicle) => vehicle is { IsComponentAlive: true } ? vehicle.Id : BroadcastId;
+
+    private static int VehicleToId(Vehicle? vehicle) =>
+        vehicle is { IsComponentAlive: true } ? vehicle.Id : BroadcastId;
+
+    private static int AttachedId(Player? player) => player is { IsComponentAlive: true } ? player.Id : NotAttachedId;
+
+    private static int AttachedId(Vehicle? vehicle) =>
+        vehicle is { IsComponentAlive: true } ? vehicle.Id : NotAttachedId;
 
     private static uint ToRgba(Color c) => ((uint)c.R << 24) | ((uint)c.G << 16) | ((uint)c.B << 8) | c.A;
 
