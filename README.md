@@ -1,125 +1,116 @@
-# SampSharp.OpenMp.Streamer
+# OpenRP.OpenMp.Streamer
 
-Managed C# bindings for the [Incognito streamer plugin](https://github.com/samp-incognito/samp-streamer-plugin)
-on open.mp x64, for gamemodes running on the SampSharp open.mp host. Lets a C# gamemode
-create far more objects, pickups, text labels, map icons, checkpoints, areas and actors than
-the engine's own limits allow, with the plugin streaming them in and out around players.
+The [Incognito streamer](https://github.com/samp-incognito/samp-streamer-plugin) for SampSharp 1.x gamemodes on open.mp x64, with every streamer item as an **ECS component**. Create far more objects, pickups, text labels, map icons, checkpoints and actors than the game allows, and let the streamer show them around players.
 
-## Architecture
+This is Open Roleplay's fork of [VS-RP/SampSharp.OpenMp.Streamer](https://github.com/VS-RP/SampSharp.OpenMp.Streamer). It's the SampSharp 1.x successor of [OpenRP.Streamer](https://github.com/OpenRoleplay/OpenRP.Streamer), which only works on SampSharp 0.x.
 
-open.mp loads three independent components; this repository provides the middle one plus
-the C# bindings on top of it.
+## What this fork adds
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  C# gamemode                                                         │
-│     IStreamerService, DynamicObject, DynamicPickup, ...              │
-└──────────────────────────────────────────────────────────────────────┘
-                               │   P/Invoke (LibraryImport("SampSharp.Streamer"))
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│  SampSharp.Streamer.dll  (this repo, native/)                        │
-│     Streamer_Object_Create / Pickup / TextLabel / MapIcon / ...      │
-│     queryExtension<IStreamerComponent>() at onInit                   │
-└──────────────────────────────────────────────────────────────────────┘
-                               │   direct C++ virtual calls (no AMX)
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│  streamer.dll  (Incognito streamer x64 port, our fork)               │
-│     IStreamerComponent : IExtension                                  │
-│     dispatches into Core::getData() / Grid / StreamerApi             │
-└──────────────────────────────────────────────────────────────────────┘
-```
+| | VS-RP's library | This fork |
+|---|---|---|
+| Streamer items | Plain C# objects | **ECS components**, each on its own entity |
+| Owner | None: you destroy items yourself | `parent:` on every `Create…`: the item is destroyed with its owner, and found with `GetComponentInChildren<…>()` |
+| Events | Throwaway wrapper objects | The real component: `OnPlayerEnterDynamicCP(Player player, DynamicCheckpoint checkpoint)` |
+| Per-player settings | None | `SetVisibleItems`, `SetRadiusMultiplier`, `Update` and their getters |
 
-Calls reach the plugin through its component interface, not through AMX — no Pawn round
-trip on the hot path. The shim has **no link-time dependency on `SampSharp.dll`**; the
-managed side reaches it by P/Invoke.
+**Why components:** SampSharp 1.x is ECS only, and everything else in the world (`Player`, `Vehicle`, `GlobalObject`) is a component. Items that belong to an entity, like a door's label, then work the same way.
 
-## Runtime dependencies
+## Setup
 
-| Component                | Where from                                             |
-|--------------------------|--------------------------------------------------------|
-| `streamer.dll`/`.so`     | Our fork of `samp-streamer-plugin` with IStreamerComponent |
-| `SampSharp.Streamer.dll` | Built from `native/` in this repository                 |
-| `SampSharp.dll`          | `SampSharp/src/sampsharp-component/`                    |
-| .NET 10 runtime          | System-wide                                             |
+These go in the server's `components/` folder:
 
-All three DLLs go in the server's `components/` directory.
+| File | From |
+|---|---|
+| `streamer.dll` / `.so` | [KoertLichtendonk/omp-streamer-component](https://github.com/KoertLichtendonk/omp-streamer-component), the x64 streamer with the per-player methods |
+| `OpenRP.OpenMp.Streamer.Native.dll` / `.so` | built from `native/` in this repository |
+| `SampSharp.dll` | SampSharp 1.x |
 
-If `streamer.dll` is not loaded at server start, every `Create*` returns a stub with
-`Id = 0` and `IsAlive = false`, silently. Check `IStreamerService.IsAvailable` rather than
-waiting for an exception that will not come.
+The per-player methods need that `streamer.dll`. VS-RP's own build doesn't have them, and calling them on it would crash.
 
-## Wiring
+If `streamer.dll` isn't loaded, every `Create…` returns an item with `Id = 0` and `IsAlive = false`. Check `IStreamerService.IsAvailable`.
+
+## Use
 
 ```csharp
-// ConfigureServices — before AddSystemsInAssembly
+// ConfigureServices
 services.AddStreamer();
 
-// ECS builder
-builder.EnableStreamerEvents();
+// Anywhere: a label that belongs to a door, destroyed together with it
+DynamicTextLabel label = streamerService.CreateDynamicTextLabel("Front door", Color.White, position, 10f,
+    parent: door.Entity);
+
+// Per player: fewer objects on a slow PC
+streamerService.SetVisibleItems(StreamerType.Object, 500, player);
+streamerService.Update(player, StreamerType.Object);
 ```
 
-## Surface
+## How it works
 
-- **Objects** — create, destroy, validate, move/stop, get and set position and rotation,
-  attach to object / player / vehicle, set material colour and text, edit
-- **Pickups**, **3D text labels**, **map icons**, **checkpoints**, **race checkpoints**,
-  **areas**, **actors** — create, destroy, validate, plus the per-type operations each
-  supports (label text and colour, actor animations, health and invulnerability, …)
+```
+C# gamemode (IStreamerService, DynamicObject, ...)        this repo, C#
+   │  P/Invoke (LibraryImport "OpenRP.OpenMp.Streamer.Native")
+OpenRP.OpenMp.Streamer.Native.dll  (C exports)            this repo, native/
+   │  C++ virtual calls on IStreamerComponent
+streamer.dll  (the x64 streamer)                          KoertLichtendonk/omp-streamer-component
+```
 
-Every wrapper type derives from `DynamicEntity`, so `Id` and `IsAlive` behave uniformly.
+**Why a native bridge:** SampSharp 1.x can't call Pawn natives, and C# can't call C++ virtual methods. The bridge turns the streamer's C++ interface into plain C functions.
+
+- **Creating:** the service creates the item in the streamer, then adds its component to a new entity (under `parent`, if given).
+- **Destroying:** when the component or its entity is destroyed, the item is destroyed in the streamer.
+- **Events:** the bridge calls back into C#. The event system finds the item's component by its streamer id, and raises the event with the player's and the item's entities.
 
 ## Events
 
-Handlers are ordinary ECS `[Event]` methods:
+Handlers are ordinary `[Event]` methods. They can take the component as a parameter.
 
-- **Stream in/out** — `OnDynamicObjectStreamIn` / `Out`, and the same pair for pickups,
-  text labels, map icons and checkpoints
-- **Objects** — `OnDynamicObjectMoved`, `OnPlayerEditDynamicObject`,
-  `OnPlayerSelectDynamicObject`, `OnPlayerShootDynamicObject`
-- **Areas and checkpoints** — `OnPlayerEnterDynamicArea` / `Leave`,
-  `OnPlayerEnterDynamicCP` / `Leave`, `OnPlayerEnterDynamicRaceCP` / `Leave`
-- **Pickups** — `OnPlayerPickUpDynamicPickup`
-
-`OnPlayerShootDynamicObject` honours a `false` return as a veto.
+- **Objects:** `OnDynamicObjectMoved`, `OnPlayerEditDynamicObject`, `OnPlayerSelectDynamicObject`, `OnPlayerShootDynamicObject` (`false` vetoes)
+- **Pickups:** `OnPlayerPickUpDynamicPickup`
+- **Checkpoints:** `OnPlayerEnterDynamicCP` and `OnPlayerLeaveDynamicCP`
+- **Stream in and out:** `OnDynamic…StreamIn` and `…StreamOut`, for objects, pickups, labels, map icons and checkpoints
+- **Areas and race checkpoints:** `OnPlayerEnter/LeaveDynamicArea` and `…DynamicRaceCP`, with the streamer id (`int`), because this library can't create them yet
 
 ## Telemetry and tuning
 
-`IStreamerService` exposes what the plugin is actually costing you, per item type:
-`StreamerPhaseStats` carries cumulative time, average microseconds per player-tick, and
-stream-in/out counts since the last `ResetPhaseStats`. The average is the useful
-single-value health metric; the time is wall-clock, not CPU.
-
-The same interface tunes the plugin at runtime: `SetHysteresisFactor` to stop items
-thrashing on a radius boundary, and `TrySetCoarseCellSize` / `TrySetCoarseCellDistance` for
-the coarse grid. The `Try*` pair returns `false` when the running plugin build does not
-support the knob, so a stock `streamer.dll` degrades instead of failing.
+From VS-RP's version:
+- **Stream time and counts per item type:** `GetPhaseStats` and `ResetPhaseStats`;
+- **Less flicker at the stream radius:** `SetHysteresisFactor`;
+- **A coarse grid for long stream distances:** `TrySetCoarseCellSize` and `TrySetCoarseCellDistance`.
 
 ## Building
 
-Two artifacts, built separately:
-
 ```bash
-# managed bindings
-dotnet build SampSharp.OpenMp.Streamer.csproj
+# C# library (uses the SampSharp NuGet packages)
+dotnet build OpenRP.OpenMp.Streamer.csproj
 
-# native shim
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
+# native bridge
+cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
 
-Both need the SampSharp repository checked out alongside this one — the csproj references
-`SampSharp.OpenMp.Core` and `SampSharp.OpenMp.Entities` by relative path, and CMake takes
-the open.mp SDK from `SampSharp/external/sdk`. Either nesting works: SampSharp as a direct
-sibling, or one level up (`src/SampSharp` with this repo under `src/submodules/`). Override
-with `-DOMP_SDK_DIR=<path>` if your layout differs.
+CMake takes the open.mp SDK from `../omp-streamer-component/lib/open.mp-sdk` (the streamer fork checked out next to this repo, so both use the same SDK revision), or from a SampSharp checkout. Override with `-DOMP_SDK_DIR=<path>`.
+
+On Windows, run CMake in a Visual Studio x64 developer prompt (`vcvars64.bat`). Keep the build folder on a short path, because MSBuild's file tracker fails on long ones.
+
+## Releases
+
+`.github/workflows/release.yml` publishes:
+
+| What | When | Where |
+|---|---|---|
+| NuGet package `OpenRP.OpenMp.Streamer` | every push to `main` (as `1.0.0-preview.<year>.<week>.<n>`) and every tag (as the tag's version) | nuget.org, through NuGet trusted publishing |
+| `OpenRP.OpenMp.Streamer.Native.dll` and `.so` | every tag | the GitHub release for that tag |
+
+`streamer.dll` comes from the [streamer component fork](https://github.com/KoertLichtendonk/omp-streamer-component)'s own releases.
+
+**Why previews from `main`:** the library depends on SampSharp 1.0 prereleases, so its own versions are prereleases too until a tag says otherwise.
+
+## Known limitations
+- **Not yet available:** areas, race checkpoints, per-item toggles and reading back materials. The streamer has them, but its C++ interface doesn't expose them yet.
+- **Labels:** their text and colour are kept on the C# side, because the interface can't read them back.
 
 ## License
 
-Apache-2.0 -- see [LICENSE](LICENSE). That covers the bindings in this
-repository; the streamer plugin itself is licensed separately by its authors.
+Apache-2.0, see [LICENSE](LICENSE). This fork keeps VS-RP's licence and credits; the streamer plugin itself is licensed separately by its authors.
 
----
-
-Powered by [vs-rp.org](https://vs-rp.org)
+Based on the work of [VS-RP](https://vs-rp.org).

@@ -1,8 +1,8 @@
 using System.Numerics;
 using SampSharp.Entities.SAMP;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>Streamer-managed pickup (PAWN-native: CreateDynamicPickup).</summary>
 public sealed class DynamicPickup : DynamicEntity
@@ -20,5 +20,5 @@ public sealed class DynamicPickup : DynamicEntity
     public Vector3 Position { get; }
 
     public override bool IsAlive => StreamerInterop.Streamer_Pickup_IsValid(Id);
-    public override void DestroyEntity() => StreamerInterop.Streamer_Pickup_Destroy(Id);
+    protected override void DestroyNative() => StreamerInterop.Streamer_Pickup_Destroy(Id);
 }

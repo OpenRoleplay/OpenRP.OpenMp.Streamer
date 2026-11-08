@@ -1,7 +1,7 @@
 using System.Numerics;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>Streamer-managed actor (PAWN-native: CreateDynamicActor).</summary>
 public sealed class DynamicActor : DynamicEntity
@@ -19,11 +19,7 @@ public sealed class DynamicActor : DynamicEntity
     public float Rotation { get; private set; }
 
     public override bool IsAlive => StreamerInterop.Streamer_Actor_IsValid(Id);
-    public override void DestroyEntity()
-    {
-        StreamerInterop.Streamer_Actor_Destroy(Id);
-        ForgetEntity();
-    }
+    protected override void DestroyNative() => StreamerInterop.Streamer_Actor_Destroy(Id);
 
     public bool SetPosition(Vector3 pos)
     {

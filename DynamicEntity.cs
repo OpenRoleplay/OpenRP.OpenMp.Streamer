@@ -2,95 +2,50 @@ using System;
 using System.Collections.Concurrent;
 using SampSharp.Entities;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>
-/// Base class for all streamer-managed entities (objects, pickups, text labels,
-/// map icons, checkpoints). Unlike ECS <see cref="SampSharp.Entities.Component"/>,
-/// a <see cref="DynamicEntity"/> lives inside streamer.dll's memory rather than
-/// the EntityManager: identity is the streamer-id alone, lifetime is controlled by
-/// explicit Destroy* calls.
+/// Base class of every streamer item (objects, pickups, text labels, map icons, checkpoints, actors).
 /// </summary>
 /// <remarks>
-/// <see cref="EventParameterAttribute"/> tells <see cref="EventDispatcher"/> to
-/// pass derived instances straight through as event arguments (the same way it
-/// treats value types and arrays) instead of trying to resolve them from DI.
-/// Without it the dispatcher would think an [Event] handler takes fewer
-/// arguments than we actually pass — for example, OnPlayerPickUpDynamicPickup
-/// dispatches (EntityId, DynamicPickup) but a DI-classified parameter would be
-/// counted as zero, giving the "argument count mismatch" log and silently
-/// skipping the handler.
+/// An item is an ECS <see cref="Component"/> on its own entity. That entity can have a parent (pass
+/// <c>parent</c> to a <c>Create…</c> method of <see cref="IStreamerService"/>), so the item is destroyed
+/// together with its owner, and owners can find their items with <c>GetComponentInChildren</c>.
+/// Destroying the component (or its entity) destroys the item in the streamer.
 /// </remarks>
-[EventParameter]
-public abstract class DynamicEntity
+public abstract class DynamicEntity : Component
 {
-    /// <summary>
-    /// Per-type registry mapping streamer-id → stable <see cref="EntityId"/>.
-    /// Required so that the same streamer item — whether obtained from a
-    /// Create* call or from a streamer event — yields the same EntityId,
-    /// because legacy VSRP code keys Dictionary&lt;EntityId, …&gt; on this.
-    /// </summary>
-    private static readonly ConcurrentDictionary<(System.Type, int), EntityId> _entityRegistry = new();
+    // Streamer events report a streamer id; this finds the component that belongs to it.
+    private static readonly ConcurrentDictionary<(Type Type, int Id), DynamicEntity> _itemsByStreamerId = new();
 
-    private EntityId _entity;
-
-    /// <summary>Streamer-side id. Stable for the lifetime of the entity.</summary>
+    /// <summary>The item's id inside the streamer (0 when the streamer refused to create it).</summary>
     public int Id { get; protected set; }
 
-    /// <summary>
-    /// Stable EntityId, identical for every managed wrapper of the same
-    /// streamer item (obtained either via Create* or via a streamer event).
-    /// </summary>
-    public EntityId Entity
-    {
-        get
-        {
-            if (_entity == default)
-                _entity = _entityRegistry.GetOrAdd((GetType(), Id), _ => EntityId.NewEntityId());
-            return _entity;
-        }
-    }
-
+    /// <summary>True while the streamer still has this item.</summary>
     public abstract bool IsAlive { get; }
-    public abstract void DestroyEntity();
 
-    /// <summary>Legacy alias mirroring the old SampSharp Component.IsComponentAlive.</summary>
-    public bool IsComponentAlive => IsAlive;
-
-    /// <summary>Legacy alias for pattern matching like <c>is { IsValid: true }</c>.</summary>
+    /// <summary>Same as <see cref="IsAlive"/>.</summary>
     public bool IsValid => IsAlive;
 
-    /// <summary>Legacy alias for Component.Destroy().</summary>
-    public void Destroy() => DestroyEntity();
+    /// <summary>Removes the item from the streamer. Called when the component is destroyed.</summary>
+    protected abstract void DestroyNative();
 
-    /// <summary>
-    /// Drops the cached EntityId from the registry. DestroyEntity implementations
-    /// should call this so that re-creating a streamer item with the same id
-    /// produces a fresh Guid instead of resurrecting a dead one.
-    /// </summary>
-    protected void ForgetEntity()
+    /// <summary>The live component of this type for a streamer id, or null.</summary>
+    internal static T? FindByStreamerId<T>(int id) where T : DynamicEntity
     {
-        _entityRegistry.TryRemove((GetType(), Id), out _);
-        _entity = default;
+        return _itemsByStreamerId.TryGetValue((typeof(T), id), out var item) ? (T)item : null;
+    }
+
+    protected override void OnInitializeComponent()
+    {
+        _itemsByStreamerId[(GetType(), Id)] = this;
+    }
+
+    protected override void OnDestroyComponent()
+    {
+        _itemsByStreamerId.TryRemove(new((GetType(), Id), this));
+        DestroyNative();
     }
 
     public override string ToString() => $"{GetType().Name}(Id={Id})";
-
-    public override bool Equals(object? obj)
-    {
-        if (ReferenceEquals(this, obj)) return true;
-        if (obj is not DynamicEntity other) return false;
-        return GetType() == other.GetType() && Id == other.Id;
-    }
-
-    public override int GetHashCode() => HashCode.Combine(GetType(), Id);
-
-    public static bool operator ==(DynamicEntity? left, DynamicEntity? right)
-    {
-        if (ReferenceEquals(left, right)) return true;
-        if (left is null || right is null) return false;
-        return left.Equals(right);
-    }
-
-    public static bool operator !=(DynamicEntity? left, DynamicEntity? right) => !(left == right);
 }

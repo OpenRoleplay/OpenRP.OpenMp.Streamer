@@ -1,4 +1,4 @@
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>
 /// Identifies an item kind the streamer tracks. Mirrors the C side

@@ -1,8 +1,8 @@
-﻿using System.Numerics;
+using System.Numerics;
 using SampSharp.Entities.SAMP;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>Streamer-managed world object (PAWN-native: CreateDynamicObject).</summary>
 public sealed class DynamicObject : DynamicEntity
@@ -62,7 +62,7 @@ public sealed class DynamicObject : DynamicEntity
 
     public bool IsMoving => StreamerInterop.Streamer_Object_IsMoving(Id);
 
-    public override void DestroyEntity() => StreamerInterop.Streamer_Object_Destroy(Id);
+    protected override void DestroyNative() => StreamerInterop.Streamer_Object_Destroy(Id);
 
     /// <summary>
     /// Starts moving the object towards the given target. Returns the move

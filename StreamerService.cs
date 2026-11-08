@@ -1,9 +1,10 @@
-﻿using System.Numerics;
+using System.Numerics;
+using SampSharp.Entities;
 using SampSharp.Entities.SAMP;
 using SampSharp.OpenMp.Core.Std;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>
 /// <see cref="IStreamerService"/> implementation. Forwards every call into streamer.dll
@@ -24,30 +25,40 @@ public sealed class StreamerService : IStreamerService
     // and labels in identical interiors of different worlds showed through each other.
     private const int NotAttachedId = 0xFFFF;
 
+    // Streamer_Update's "every item type".
+    private const int AllTypes = -1;
+
+    private readonly IEntityManager _entityManager;
+
+    public StreamerService(IEntityManager entityManager)
+    {
+        _entityManager = entityManager;
+    }
+
     public bool IsAvailable => StreamerInterop.Streamer_IsAvailable();
 
     public DynamicObject CreateDynamicObject(int modelId, Vector3 position, Vector3 rotation,
         int virtualWorld = -1, int interior = -1, Player? player = null,
         float streamDistance = 300f, float drawDistance = 0f,
-        int areaId = -1, int priority = 0)
+        int areaId = -1, int priority = 0, EntityId parent = default)
     {
         int id = StreamerInterop.Streamer_Object_Create(modelId,
             position.X, position.Y, position.Z,
             rotation.X, rotation.Y, rotation.Z,
             virtualWorld, interior, PlayerToId(player),
             streamDistance, drawDistance, areaId, priority);
-        return new DynamicObject(id, modelId, position, rotation);
+        return AddToEntity(new DynamicObject(id, modelId, position, rotation), parent);
     }
 
     public DynamicPickup CreateDynamicPickup(int modelId, PickupType type, Vector3 position,
         int virtualWorld = -1, int interior = -1, Player? player = null,
-        float streamDistance = 200f, int areaId = -1, int priority = 0)
+        float streamDistance = 200f, int areaId = -1, int priority = 0, EntityId parent = default)
     {
         int id = StreamerInterop.Streamer_Pickup_Create(modelId, (int)type,
             position.X, position.Y, position.Z,
             virtualWorld, interior, PlayerToId(player),
             streamDistance, areaId, priority);
-        return new DynamicPickup(id, modelId, type, position);
+        return AddToEntity(new DynamicPickup(id, modelId, type, position), parent);
     }
 
     public unsafe DynamicTextLabel CreateDynamicTextLabel(string text, Color color, Vector3 position,
@@ -55,7 +66,7 @@ public sealed class StreamerService : IStreamerService
         Player? attachedPlayer = null, Vehicle? attachedVehicle = null,
         bool testLos = false,
         int virtualWorld = -1, int interior = -1, Player? player = null,
-        float streamDistance = 200f, int areaId = -1, int priority = 0)
+        float streamDistance = 200f, int areaId = -1, int priority = 0, EntityId parent = default)
     {
         uint rgba = ToRgba(color);
         var bytes = EncodeNullTerminated(text ?? string.Empty);
@@ -70,45 +81,45 @@ public sealed class StreamerService : IStreamerService
                 streamDistance, areaId, priority);
         }
 
-        return new DynamicTextLabel(id, text ?? string.Empty, color, position, drawDistance);
+        return AddToEntity(new DynamicTextLabel(id, text ?? string.Empty, color, position, drawDistance), parent);
     }
 
     public DynamicMapIcon CreateDynamicMapIcon(Vector3 position, MapIcon type, Color color,
         int virtualWorld = -1, int interior = -1, Player? player = null,
         float streamDistance = 200f, MapIconType style = MapIconType.Local,
-        int areaId = -1, int priority = 0)
+        int areaId = -1, int priority = 0, EntityId parent = default)
     {
         uint rgba = ToRgba(color);
         int id = StreamerInterop.Streamer_MapIcon_Create(
             position.X, position.Y, position.Z, (int)type, rgba,
             virtualWorld, interior, PlayerToId(player),
             streamDistance, (int)style, areaId, priority);
-        return new DynamicMapIcon(id, position, type, color);
+        return AddToEntity(new DynamicMapIcon(id, position, type, color), parent);
     }
 
     public DynamicCheckpoint CreateDynamicCheckpoint(Vector3 position, float size,
         int virtualWorld = -1, int interior = -1, Player? player = null,
-        float streamDistance = 200f, int areaId = -1, int priority = 0)
+        float streamDistance = 200f, int areaId = -1, int priority = 0, EntityId parent = default)
     {
         int id = StreamerInterop.Streamer_Checkpoint_Create(
             position.X, position.Y, position.Z, size,
             virtualWorld, interior, PlayerToId(player),
             streamDistance, areaId, priority);
-        return new DynamicCheckpoint(id, position, size);
+        return AddToEntity(new DynamicCheckpoint(id, position, size), parent);
     }
 
     public DynamicActor CreateDynamicActor(int modelId, Vector3 position, float rotation,
         bool invulnerable = true, float health = 100f,
         float streamDistance = 300f,
         int virtualWorld = -1, int interior = -1, Player? player = null,
-        int areaId = -1, int priority = 0)
+        int areaId = -1, int priority = 0, EntityId parent = default)
     {
         int id = StreamerInterop.Streamer_Actor_Create(modelId,
             position.X, position.Y, position.Z, rotation,
             invulnerable, health, streamDistance,
             virtualWorld, interior, PlayerToId(player),
             areaId, priority);
-        return new DynamicActor(id, modelId, position, rotation);
+        return AddToEntity(new DynamicActor(id, modelId, position, rotation), parent);
     }
 
     // ---- Telemetry (VS:RP fork) ---------------------------------------------------
@@ -143,6 +154,32 @@ public sealed class StreamerService : IStreamerService
     public float CoarseCellDistance => StreamerInterop.Streamer_GetCoarseCellDistance();
     public bool TrySetCoarseCellDistance(float distance) => StreamerInterop.Streamer_SetCoarseCellDistance(distance);
 
+    // ---- Per-player streaming settings (OpenRP streamer fork) ----------------------
+
+    public int GetVisibleItems(StreamerType type, Player? player = null) =>
+        StreamerInterop.Streamer_GetVisibleItems((int)type, PlayerToId(player));
+
+    public bool SetVisibleItems(StreamerType type, int items, Player? player = null) =>
+        StreamerInterop.Streamer_SetVisibleItems((int)type, items, PlayerToId(player));
+
+    public float GetRadiusMultiplier(StreamerType type, Player? player = null) =>
+        StreamerInterop.Streamer_GetRadiusMultiplier((int)type, PlayerToId(player));
+
+    public bool SetRadiusMultiplier(StreamerType type, float multiplier, Player? player = null) =>
+        StreamerInterop.Streamer_SetRadiusMultiplier((int)type, multiplier, PlayerToId(player));
+
+    public bool Update(Player player, StreamerType? type = null) =>
+        player is { IsComponentAlive: true } && StreamerInterop.Streamer_UpdatePlayer(player.Id, type.HasValue ? (int)type.Value : AllTypes);
+
+    /// <summary>
+    /// Puts the item on a new entity (under the parent, if any), which makes it an ECS component.
+    /// </summary>
+    private T AddToEntity<T>(T item, EntityId parent) where T : DynamicEntity
+    {
+        _entityManager.AddComponent(EntityId.NewEntityId(), parent, item);
+        return item;
+    }
+
     private static int PlayerToId(Player? player) => player is { IsComponentAlive: true } ? player.Id : BroadcastId;
 
     private static int VehicleToId(Vehicle? vehicle) =>
@@ -158,7 +195,7 @@ public sealed class StreamerService : IStreamerService
     /// <summary>
     /// Encodes a string via the current <see cref="StringViewMarshaller.Encoding"/>
     /// and appends a NUL terminator. Used for strings that go DIRECTLY to the client
-    /// through streamer.dll — those require the client encodingю
+    /// through streamer.dll — those require the client encoding
     /// </summary>
     private static byte[] EncodeNullTerminated(string s)
     {

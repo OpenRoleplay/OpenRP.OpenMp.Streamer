@@ -1,8 +1,8 @@
 using System.Numerics;
 using SampSharp.Entities.SAMP;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>Streamer-managed map icon (PAWN-native: CreateDynamicMapIcon).</summary>
 public sealed class DynamicMapIcon : DynamicEntity
@@ -20,7 +20,7 @@ public sealed class DynamicMapIcon : DynamicEntity
     public Color Color { get; }
 
     public override bool IsAlive => StreamerInterop.Streamer_MapIcon_IsValid(Id);
-    public override void DestroyEntity() => StreamerInterop.Streamer_MapIcon_Destroy(Id);
+    protected override void DestroyNative() => StreamerInterop.Streamer_MapIcon_Destroy(Id);
 }
 
 public enum MapIconType

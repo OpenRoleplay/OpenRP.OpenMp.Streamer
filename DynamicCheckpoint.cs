@@ -1,7 +1,7 @@
 using System.Numerics;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>Streamer-managed checkpoint (PAWN-native: CreateDynamicCP).</summary>
 public sealed class DynamicCheckpoint : DynamicEntity
@@ -17,5 +17,5 @@ public sealed class DynamicCheckpoint : DynamicEntity
     public float Size { get; }
 
     public override bool IsAlive => StreamerInterop.Streamer_Checkpoint_IsValid(Id);
-    public override void DestroyEntity() => StreamerInterop.Streamer_Checkpoint_Destroy(Id);
+    protected override void DestroyNative() => StreamerInterop.Streamer_Checkpoint_Destroy(Id);
 }

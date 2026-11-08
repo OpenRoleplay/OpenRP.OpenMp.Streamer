@@ -1,0 +1,137 @@
+name: release
+
+on:
+  push:
+    branches:
+      - "main"
+    tags:
+      - "*"
+
+jobs:
+  # NuGet package: a preview on every push to main, the tag's version on a tag. Published with NuGet trusted
+  # publishing (OIDC), the same as OpenRP.Framework.
+  nuget:
+    runs-on: ubuntu-latest
+    environment: main
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set VERSION variable
+      run: |
+        if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          # For tag pushes, use the tag version directly
+          VERSION=${GITHUB_REF/refs\/tags\//}
+        else
+          git fetch --tags  # Ensure all tags are fetched
+
+          # The latest base tag (e.g. "1.0.0"), or 1.0.0 while there are no tags yet
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "1.0.0")
+
+          # Get the current week using Monday as the first day
+          WEEK=$(date +'%W')
+          WEEK=$((10#$WEEK))
+          YEAR=$(date +'%Y')
+
+          # Calculate Monday of the current week (works on GNU date)
+          MONDAY=$(date -d "today - $(($(date +%u)-1)) days" +%Y-%m-%d)
+
+          # Count the number of commits made since Monday
+          BUILD_NUMBER=$(git rev-list --count HEAD --since="$MONDAY")
+
+          # A preview: this library depends on SampSharp 1.0 prereleases
+          VERSION="${LATEST_TAG}-preview.${YEAR}.${WEEK}.${BUILD_NUMBER}"
+        fi
+
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore OpenRP.OpenMp.Streamer.csproj
+
+    - name: Build
+      run: dotnet build OpenRP.OpenMp.Streamer.csproj --configuration Release --no-restore -p:Version=${VERSION}
+
+    - name: Pack
+      run: dotnet pack OpenRP.OpenMp.Streamer.csproj --configuration Release --no-build --output bin -p:Version=${VERSION}
+
+    - name: NuGet login (OIDC to temporary API key)
+      uses: NuGet/login@v1
+      id: login
+      with:
+        user: Manifesto3263
+
+    - name: Push
+      run: dotnet nuget push bin/*.nupkg --source "https://api.nuget.org/v3/index.json" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --skip-duplicate
+
+  # The native bridge for the server's components/ folder, on tags only.
+  native:
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout OpenRP.OpenMp.Streamer
+      uses: actions/checkout@v4
+      with:
+        path: OpenRP.OpenMp.Streamer
+
+    # CMake takes the open.mp SDK from the streamer component fork next to this repo, so both use the same revision.
+    - name: Checkout the streamer component fork (for the open.mp SDK)
+      uses: actions/checkout@v4
+      with:
+        repository: KoertLichtendonk/omp-streamer-component
+        path: omp-streamer-component
+
+    - name: Fetch the open.mp SDK submodule
+      run: git -C omp-streamer-component submodule update --init --recursive --depth 1 lib/open.mp-sdk
+
+    - name: Configure
+      run: cmake -B build -S OpenRP.OpenMp.Streamer -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Upload the native bridge
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-${{ matrix.os }}
+        path: |
+          build/artifacts/OpenRP.OpenMp.Streamer.Native.dll
+          build/artifacts/OpenRP.OpenMp.Streamer.Native.so
+        if-no-files-found: error
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download the native bridges
+      uses: actions/download-artifact@v4
+      with:
+        path: native
+        merge-multiple: true
+
+    - name: Create the GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          native/OpenRP.OpenMp.Streamer.Native.dll
+          native/OpenRP.OpenMp.Streamer.Native.so

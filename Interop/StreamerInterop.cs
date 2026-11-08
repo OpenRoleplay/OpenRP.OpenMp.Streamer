@@ -1,20 +1,19 @@
 using System.Runtime.InteropServices;
 
-namespace SampSharp.Streamer.Entities.Interop;
+namespace OpenRP.OpenMp.Streamer.Interop;
 
 /// <summary>
-/// P/Invoke-биндинги к C-exports в SampSharp.dll, которые через
-/// <c>IStreamerComponent</c> IExtension форвардят вызовы в streamer.dll
-/// (форк Incognito streamer plugin с open.mp x64 портом).
+/// P/Invoke bindings to the C exports of OpenRP.OpenMp.Streamer.Native.dll, an open.mp component that
+/// forwards them to the streamer through its <c>IStreamerComponent</c> extension (the x64 streamer fork).
 ///
-/// Если streamer.dll не загружен, все Streamer_* возвращают 0/false.
-/// Состояние доступности запрашивается через <see cref="Streamer_IsAvailable"/>.
+/// If streamer.dll isn't loaded, every Streamer_* call returns 0 or false; check
+/// <see cref="Streamer_IsAvailable"/>.
 /// </summary>
 internal static partial class StreamerInterop
 {
-    // Our own open.mp component — SampSharp.Streamer.dll — is loaded by the server from
-    // env/components/. LoadLibrary finds already-loaded modules by short name without extension.
-    private const string Lib = "SampSharp.Streamer";
+    // Our own open.mp component, OpenRP.OpenMp.Streamer.Native.dll, is loaded by the server from components/.
+    // LoadLibrary finds an already-loaded module by its short name, without the extension.
+    private const string Lib = "OpenRP.OpenMp.Streamer.Native";
 
     [LibraryImport(Lib)]
     [return: MarshalAs(UnmanagedType.I1)]
@@ -292,4 +291,18 @@ internal static partial class StreamerInterop
     [LibraryImport(Lib)]
     [return: MarshalAs(UnmanagedType.I1)]
     internal static partial bool Streamer_SetCoarseCellDistance(float distance);
+
+    // ----- Per-player streaming settings (OpenRP streamer fork) -------------------------
+
+    [LibraryImport(Lib)] internal static partial int Streamer_GetVisibleItems(int type, int playerId);
+    [LibraryImport(Lib)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static partial bool Streamer_SetVisibleItems(int type, int items, int playerId);
+    [LibraryImport(Lib)] internal static partial float Streamer_GetRadiusMultiplier(int type, int playerId);
+    [LibraryImport(Lib)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static partial bool Streamer_SetRadiusMultiplier(int type, float multiplier, int playerId);
+    [LibraryImport(Lib)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    internal static partial bool Streamer_UpdatePlayer(int playerId, int type);
 }

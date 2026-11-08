@@ -2,20 +2,18 @@ using Microsoft.Extensions.DependencyInjection;
 using SampSharp.Entities;
 using SampSharp.OpenMp.Core;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 public static class StreamerEcsExtensions
 {
     /// <summary>
-    /// Регистрирует streamer events в ECS builder'е. В Phase 2 это активирует
-    /// <see cref="StreamerEventSystem"/>, который при старте attach'ит
-    /// UnmanagedCallersOnly callbacks в SampSharp.dll → streamer.dll.
+    /// Kept for symmetry with the 0.x streamer: the events are already enabled by
+    /// <see cref="StreamerEventSystem"/>, which <see cref="AddStreamer"/> registers.
     /// </summary>
     public static IEcsBuilder EnableStreamerEvents(this IEcsBuilder builder) => builder;
 
     /// <summary>
-    /// Зарегистрировать в DI все сервисы streamer'а. Вызвать в ConfigureServices до
-    /// AddSystemsInAssembly. Порядок: сначала IStreamerService, затем event-система.
+    /// Registers <see cref="IStreamerService"/> and the streamer event system. Call it from ConfigureServices.
     /// </summary>
     public static IServiceCollection AddStreamer(this IServiceCollection services)
     {

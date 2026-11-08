@@ -1,9 +1,9 @@
-﻿using System.Numerics;
+using System.Numerics;
 using SampSharp.Entities.SAMP;
 using SampSharp.OpenMp.Core.Std;
-using SampSharp.Streamer.Entities.Interop;
+using OpenRP.OpenMp.Streamer.Interop;
 
-namespace SampSharp.Streamer.Entities;
+namespace OpenRP.OpenMp.Streamer;
 
 /// <summary>Streamer-managed 3D text label (PAWN-native: CreateDynamic3DTextLabel).</summary>
 public sealed class DynamicTextLabel : DynamicEntity
@@ -43,7 +43,7 @@ public sealed class DynamicTextLabel : DynamicEntity
         }
     }
 
-    /// <summary>Обновляет цвет и текст одним вызовом (один round-trip в streamer).</summary>
+    /// <summary>Updates the colour and the text in one call to the streamer.</summary>
     public bool Update(Color color, string text)
     {
         _color = color;
@@ -52,7 +52,7 @@ public sealed class DynamicTextLabel : DynamicEntity
     }
 
     public override bool IsAlive => StreamerInterop.Streamer_TextLabel_IsValid(Id);
-    public override void DestroyEntity() => StreamerInterop.Streamer_TextLabel_Destroy(Id);
+    protected override void DestroyNative() => StreamerInterop.Streamer_TextLabel_Destroy(Id);
 
     private unsafe bool UpdateNative()
     {

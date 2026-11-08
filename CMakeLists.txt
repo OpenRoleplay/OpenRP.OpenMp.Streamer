@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(SampSharpStreamer LANGUAGES CXX VERSION 1.0.0)
+project(OpenRP.OpenMp.Streamer.Native LANGUAGES CXX VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,7 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Docker checkouts) or one level further up (inside VSRP: src/SampSharp with
 # this repo under src/submodules/). Falls back to a nested copy.
 if(NOT DEFINED OMP_SDK_DIR OR OMP_SDK_DIR STREQUAL "")
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../SampSharp/external/sdk/CMakeLists.txt")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../omp-streamer-component/lib/open.mp-sdk/CMakeLists.txt")
+        # OpenRP layout: the streamer component fork checked out next to this repo, same SDK revision.
+        set(OMP_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../omp-streamer-component/lib/open.mp-sdk")
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../SampSharp/external/sdk/CMakeLists.txt")
         set(OMP_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../SampSharp/external/sdk")
     elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../SampSharp/external/sdk/CMakeLists.txt")
         set(OMP_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../SampSharp/external/sdk")
@@ -19,7 +22,7 @@ if(NOT DEFINED OMP_SDK_DIR OR OMP_SDK_DIR STREQUAL "")
         message(FATAL_ERROR "open.mp SDK not found. Set -DOMP_SDK_DIR=<path> or make sure the SampSharp submodule is checked out at ../SampSharp or ../../SampSharp.")
     endif()
 endif()
-message(STATUS "SampSharp.Streamer: using open.mp SDK at ${OMP_SDK_DIR}")
+message(STATUS "OpenRP.OpenMp.Streamer.Native: using open.mp SDK at ${OMP_SDK_DIR}")
 
 # Output path: use -DCOMPONENTS_DIR=<path/to/env/components> for direct deploy,
 # otherwise build/artifacts/.
@@ -41,21 +44,21 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++latest /Zc:preprocessor")
 endif()
 
-add_library(SampSharp.Streamer SHARED
+add_library(OpenRP.OpenMp.Streamer.Native SHARED
     native/component.cpp
 )
 
-set_target_properties(SampSharp.Streamer PROPERTIES OUTPUT_NAME "SampSharp.Streamer" PREFIX "")
-set_property(TARGET SampSharp.Streamer PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set_target_properties(OpenRP.OpenMp.Streamer.Native PROPERTIES OUTPUT_NAME "OpenRP.OpenMp.Streamer.Native" PREFIX "")
+set_property(TARGET OpenRP.OpenMp.Streamer.Native PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-target_compile_definitions(SampSharp.Streamer PRIVATE
+target_compile_definitions(OpenRP.OpenMp.Streamer.Native PRIVATE
     WIN32_LEAN_AND_MEAN
     VC_EXTRALEAN
     NOGDI
 )
 
 if(WIN32)
-    target_compile_definitions(SampSharp.Streamer PRIVATE NOMINMAX)
+    target_compile_definitions(OpenRP.OpenMp.Streamer.Native PRIVATE NOMINMAX)
 endif()
 
-target_link_libraries(SampSharp.Streamer PRIVATE OMP-SDK)
+target_link_libraries(OpenRP.OpenMp.Streamer.Native PRIVATE OMP-SDK)

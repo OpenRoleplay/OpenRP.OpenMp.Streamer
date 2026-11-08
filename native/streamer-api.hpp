@@ -163,5 +163,13 @@ struct IStreamerComponent : public IExtension
     virtual void addEventHandler(IStreamerEventHandler* handler) = 0;
     virtual void removeEventHandler(IStreamerEventHandler* handler) = 0;
 
+    // Per-player streaming settings (OpenRP streamer fork, KoertLichtendonk/omp-streamer-component).
+    // Appended after every other method, matching the fork's vtable. type = STREAMER_TYPE_*; playerId -1 = all players.
+    virtual int   getVisibleItems(int type, int playerId) = 0;
+    virtual bool  setVisibleItems(int type, int items, int playerId) = 0;
+    virtual float getRadiusMultiplier(int type, int playerId) = 0;
+    virtual bool  setRadiusMultiplier(int type, float multiplier, int playerId) = 0;
+    virtual bool  updatePlayer(int playerId, int type) = 0;
+
     void reset() override {}
 };

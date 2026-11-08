@@ -1,16 +1,14 @@
-// SampSharp.Streamer — open.mp component that bridges Incognito streamer (exposed as
-// IStreamerComponent IExtension) to managed .NET (via C-exports + function-pointer callbacks).
+// OpenRP.OpenMp.Streamer.Native: an open.mp component that bridges the x64 streamer component
+// (IStreamerComponent, exposed as an IExtension) to OpenRP.OpenMp.Streamer in .NET, through plain
+// C exports and function-pointer callbacks. SampSharp 1.0 can't call Pawn natives or C++ virtual
+// methods, so every streamer call from C# goes through one of these exports.
 //
-// Architecture:
-//   open.mp loads 3 components independently:
-//     - streamer.dll        (provides IStreamerComponent extension)
-//     - SampSharp.dll       (hosts the .NET runtime + gamemode)
-//     - SampSharp.Streamer.dll  (THIS) — pure C-API shim
+// open.mp loads streamer.dll, SampSharp.dll and this component independently. At onInit this component
+// finds the streamer's IStreamerComponent and registers an event handler; it doesn't depend on SampSharp.dll.
 //
-//   At onInit this component queryComponent's streamer and registers a C++ event handler.
-//   Managed side (SampSharp.OpenMp.Streamer.csproj) P/Invokes into this DLL's exports.
-//
-//   This component has no dependency on SampSharp.dll — entirely decoupled.
+// Forked from VS-RP/SampSharp.OpenMp.Streamer (Apache-2.0). Added: own name and UID, and exports for the
+// per-player settings of the streamer fork (KoertLichtendonk/omp-streamer-component). Those calls need that
+// fork's streamer.dll: on a streamer.dll without them they would call past the end of its vtable.
 
 #include <sdk.hpp>
 
@@ -19,15 +17,13 @@
 namespace
 {
     // Component identity. Different from both streamer.dll and SampSharp.dll UIDs.
-    constexpr UID kSampSharpStreamerUID = UID(0x53735374726d7253ULL); // "SsStrmrS"
+    constexpr UID kOpenRpStreamerUID = UID(0x4f724f6d70537472ULL); // "OrOmpStr"
 
     IStreamerComponent* g_streamer = nullptr;
 
     // ---- Managed callback function pointers ----
-    // На Linux x64 calling convention один (System V), `__cdecl` расшифровывается
-    // в `__attribute__((__cdecl__))` в позиции, которую GCC отказывается парсить
-    // в using-алиасе → дальше ломается весь TU. На Win/x86 cdecl нужен, но мы там
-    // через MSVC, который ест keyword-форму без аттрибута.
+    // No __cdecl in these aliases: GCC rejects the attribute in that position on Linux x64, where there is
+    // only one calling convention anyway; MSVC uses cdecl by default.
     using FnPlayerInt = void (*)(int, int);
     using FnIntInt    = void (*)(int, int);
     using FnInt       = void (*)(int);
@@ -103,12 +99,12 @@ namespace
     bool g_handlerRegistered = false;
 
     // ---- Component ----
-    class SampSharpStreamerComponent final : public IComponent
+    class OpenRpStreamerComponent final : public IComponent
     {
     public:
-        PROVIDE_UID(kSampSharpStreamerUID)
+        PROVIDE_UID(kOpenRpStreamerUID)
 
-        StringView componentName() const override { return "SampSharp.Streamer"; }
+        StringView componentName() const override { return "OpenRP.OpenMp.Streamer.Native"; }
         SemanticVersion componentVersion() const override { return SemanticVersion(1, 0, 0, 0); }
 
         void onLoad(ICore* c) override { core_ = c; }
@@ -120,19 +116,19 @@ namespace
             if (!streamerComp)
             {
                 if (core_) core_->logLn(LogLevel::Warning,
-                    "SampSharp.Streamer: streamer.dll not loaded; all Streamer_* calls will be no-op");
+                    "OpenRP.OpenMp.Streamer.Native: streamer.dll not loaded; all Streamer_* calls will be no-op");
                 return;
             }
             g_streamer = queryExtension<IStreamerComponent>(streamerComp);
             if (!g_streamer)
             {
                 if (core_) core_->logLn(LogLevel::Warning,
-                    "SampSharp.Streamer: streamer.dll loaded but IStreamerComponent extension missing; use the open.mp x64 streamer fork");
+                    "OpenRP.OpenMp.Streamer.Native: streamer.dll loaded but IStreamerComponent extension missing; use the open.mp x64 streamer fork");
                 return;
             }
             g_streamer->addEventHandler(&g_handler);
             g_handlerRegistered = true;
-            if (core_) core_->printLn("SampSharp.Streamer: bound to streamer.dll IStreamerComponent extension");
+            if (core_) core_->printLn("OpenRP.OpenMp.Streamer.Native: bound to streamer.dll IStreamerComponent extension");
         }
 
         void free() override
@@ -152,12 +148,12 @@ namespace
         ICore* core_ = nullptr;
     };
 
-    SampSharpStreamerComponent* g_componentInstance = nullptr;
+    OpenRpStreamerComponent* g_componentInstance = nullptr;
 }
 
 COMPONENT_ENTRY_POINT()
 {
-    if (!g_componentInstance) g_componentInstance = new SampSharpStreamerComponent();
+    if (!g_componentInstance) g_componentInstance = new OpenRpStreamerComponent();
     return g_componentInstance;
 }
 
@@ -346,3 +342,20 @@ extern "C" SDK_EXPORT void __CDECL Streamer_SetCallback_DynamicMapIconStreamOut(
 extern "C" SDK_EXPORT void __CDECL Streamer_SetCallback_PlayerEditDynamicObject(FnEdit fn)      { cb_editObj = fn; }
 extern "C" SDK_EXPORT void __CDECL Streamer_SetCallback_PlayerSelectDynamicObject(FnSelect fn)  { cb_selectObj = fn; }
 extern "C" SDK_EXPORT void __CDECL Streamer_SetCallback_PlayerShootDynamicObject(FnShoot fn)    { cb_shootObj = fn; }
+
+// ---- Per-player streaming settings (OpenRP streamer fork) ----
+
+extern "C" SDK_EXPORT int __CDECL Streamer_GetVisibleItems(int type, int playerId)
+{ return g_streamer ? g_streamer->getVisibleItems(type, playerId) : 0; }
+
+extern "C" SDK_EXPORT bool __CDECL Streamer_SetVisibleItems(int type, int items, int playerId)
+{ return g_streamer && g_streamer->setVisibleItems(type, items, playerId); }
+
+extern "C" SDK_EXPORT float __CDECL Streamer_GetRadiusMultiplier(int type, int playerId)
+{ return g_streamer ? g_streamer->getRadiusMultiplier(type, playerId) : 1.0f; }
+
+extern "C" SDK_EXPORT bool __CDECL Streamer_SetRadiusMultiplier(int type, float multiplier, int playerId)
+{ return g_streamer && g_streamer->setRadiusMultiplier(type, multiplier, playerId); }
+
+extern "C" SDK_EXPORT bool __CDECL Streamer_UpdatePlayer(int playerId, int type)
+{ return g_streamer && g_streamer->updatePlayer(playerId, type); }
