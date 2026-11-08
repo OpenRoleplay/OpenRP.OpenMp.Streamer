@@ -7,11 +7,27 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <RootNamespace>OpenRP.OpenMp.Streamer</RootNamespace>
         <AssemblyName>OpenRP.OpenMp.Streamer</AssemblyName>
-        <PackageId>OpenRP.OpenMp.Streamer</PackageId>
-        <Description>Streamer for SampSharp 1.x on open.mp x64, with streamer items as ECS components. Fork of VS-RP's SampSharp.OpenMp.Streamer.</Description>
-        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <RepositoryUrl>https://github.com/OpenRoleplay/OpenRP.OpenMp.Streamer</RepositoryUrl>
     </PropertyGroup>
+
+    <PropertyGroup Label="Package">
+        <PackageId>OpenRP.OpenMp.Streamer</PackageId>
+        <Title>Streamer for SampSharp 1.x (open.mp x64)</Title>
+        <Description>Streamer for SampSharp 1.x on open.mp x64, with streamer items as ECS components. Fork of VS-RP's SampSharp.OpenMp.Streamer.</Description>
+        <Authors>VS-RP, Koert Lichtendonk</Authors>
+        <Company>VS-RP, Koert Lichtendonk</Company>
+        <PackageIcon>OpenRoleplay.png</PackageIcon>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageTags>SampSharp open.mp streamer</PackageTags>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <PackageProjectUrl>https://open-roleplay.com/</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/OpenRoleplay/OpenRP.OpenMp.Streamer</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="OpenRoleplay.png" Pack="True" PackagePath="\" />
+        <None Include="README.md" Pack="True" PackagePath="\" />
+    </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="SampSharp.OpenMp.Core" Version="1.0.0-prerelease2" />
